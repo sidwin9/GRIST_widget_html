@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tableau de données Grist</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    :root { color-scheme: light; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #f5f7fb; color: #172033; }
+    .panel { max-width: 1200px; margin: 0 auto; background: white; border: 1px solid #e3e8f0; border-radius: 14px; box-shadow: 0 8px 28px #1720330b; overflow: hidden; }
+    header { padding: 22px 24px 16px; border-bottom: 1px solid #edf0f5; }
+    h1 { margin: 0 0 6px; font-size: 21px; }
+    .sub { margin: 0; color: #667085; font-size: 13px; }
+    .toolbar { display: flex; align-items: center; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+    input { flex: 1; min-width: 220px; padding: 10px 12px; border: 1px solid #d8deea; border-radius: 8px; font: inherit; outline: none; }
+    input:focus { border-color: #5577d8; box-shadow: 0 0 0 3px #5577d81c; }
+    #count { color: #667085; font-size: 13px; white-space: nowrap; }
+    .table-wrap { overflow: auto; max-height: 68vh; border-top: 1px solid #edf0f5; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+    th, td { padding: 11px 14px; border-bottom: 1px solid #edf0f5; text-align: left; }
+    th { position: sticky; top: 0; background: #f8f9fc; color: #475467; font-weight: 650; z-index: 1; }
+    tbody tr:hover { background: #f8faff; }
+    .empty { padding: 42px 20px; text-align: center; color: #667085; }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #667085; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #d69e36; }
+    .dot.ok { background: #16a36a; }
+    footer { padding: 12px 24px; color: #98a2b3; font-size: 11px; }
+    @media (max-width: 600px) { body { padding: 10px; } header, .toolbar, footer { padding-left: 14px; padding-right: 14px; } }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header>
+      <h1>Vue des données Grist</h1>
+      <p class="sub">Les enregistrements de la table sélectionnée s'affichent automatiquement ici.</p>
+    </header>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Rechercher dans les données…" aria-label="Rechercher">
+      <span id="count">En attente des données…</span>
+      <span class="status"><span id="dot" class="dot"></span><span id="status">Connexion à Grist</span></span>
+    </div>
+    <div id="content" class="empty" role="status">En attente des données transmises par Grist…</div>
+    <footer>Widget en lecture seule · Les données restent affichées dans ce widget.</footer>
+  </main>
+
+<script>
+(() => {
+  const content = document.getElementById('content');
+  const search = document.getElementById('search');
+  const count = document.getElementById('count');
+  const status = document.getElementById('status');
+  const dot = document.getElementById('dot');
+  let records = [];
+
+  function displayValue(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return value.map(displayValue).join(', ');
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  function render() {
+    const term = search.value.trim().toLocaleLowerCase('fr');
+    const filtered = records.filter(record =>
+      Object.values(record).some(value =>
+        displayValue(value).toLocaleLowerCase('fr').includes(term)
+      )
+    );
+
+    count.textContent = `${filtered.length} / ${records.length} ligne(s)`;
+    if (!filtered.length) {
+      content.className = 'empty';
+      content.textContent = records.length ? 'Aucun résultat pour cette recherche.' : 'Aucune donnée reçue. Vérifiez la table sélectionnée dans les options du widget Grist.';
+      return;
+    }
+
+    const columns = [...new Set(filtered.flatMap(record => Object.keys(record)))];
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+
+    columns.forEach(column => {
+      const th = document.createElement('th');
+      th.textContent = column;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    filtered.forEach(record => {
+      const tr = document.createElement('tr');
+      columns.forEach(column => {
+        const td = document.createElement('td');
+        td.textContent = displayValue(record[column]);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    content.className = 'table-wrap';
+    content.replaceChildren(table);
+  }
+
+  search.addEventListener('input', render);
+
+  if (window.grist) {
+    grist.ready({ requiredAccess: 'read table' });
+    grist.onRecords(data => {
+      records = Array.isArray(data) ? data : [];
+      status.textContent = 'Connecté à Grist';
+      dot.classList.add('ok');
+      render();
+    });
+  } else {
+    status.textContent = 'Mode aperçu';
+    content.className = 'empty';
+    content.textContent = 'Ce fichier est prêt à recevoir les données lorsqu’il est ouvert comme widget personnalisé dans Grist. En ouverture directe, l’API Grist n’est pas disponible.';
+  }
+})();
+</script>
+</body>
+</html>
